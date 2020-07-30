@@ -8,6 +8,7 @@ using AngleSharp;
 using AngleSharp.Dom;
 using AngleSharp.Html.Parser;
 using WorkSplitor;
+using WorkSplitor.Models;
 
 namespace TryAngelSharp
 {
@@ -15,136 +16,100 @@ namespace TryAngelSharp
     {
         static void Main(string[] args)
         {
-            //Test1();
-            SplitTextTest();
+            Test1();
         }
 
-
-        #region "Test2"
-        private static void SplitTextTest()
-        {
-            Dictionary<string, string> map = new Dictionary<string, string>()
-            {
-                { "warcraft", "http://www.google.com.tw" },
-                { "starcraft", "http://www.google.com.tw" },
-            };
-
-            string sourceText = "blizzard is a great company, have build much great games, like 'warcraft', 'starcraft', 'starcraft', 'warcraft', diablo.";
-
-            List<IWordElement> totalNodeList = WordSplitor.SplitWords(sourceText, map);
-
-            Console.WriteLine("Input: " + sourceText);
-            Console.WriteLine("  keyword: warcraft, starcraft ");
-
-
-            foreach (var item in totalNodeList)
-            {
-                if (item is TextNode)
-                    Console.ForegroundColor = ConsoleColor.Red;
-
-                if (item is LinkNode)
-                    Console.ForegroundColor = ConsoleColor.Green;
-
-                Console.WriteLine("   " + item.ToString());
-            }
-        }
-        #endregion
 
 
 
 
         private static void Test1()
         {
+            Dictionary<string, string> dicKeywordMap = new Dictionary<string, string>()
+            {
+                { "維基百科", "https://www.wikipedia.org/" },
+            };
 
-            //var config = Configuration.Default.WithDefaultLoader();
-            //var address = "https://en.wikipedia.org/wiki/List_of_The_Big_Bang_Theory_episodes";
-            //var context = BrowsingContext.New(config);
-
-            //var document = context.OpenAsync(address).Result;
-            //var cellSelector = "tr.vevent td:nth-child(3)";
-            //var cells = document.QuerySelectorAll(cellSelector);
-            //var titles = cells.Select(m => m.TextContent);
-            //---------------------
-
-
-
-            var content = File.ReadAllText("TestData2.html");
-            var result = RefineImageElement(content);
+            var content = File.ReadAllText("TestData.html");
+            var result = ProcessTextElement(content, dicKeywordMap);
 
 
             File.WriteAllText("TestData3.html", result);
 
+            Console.WriteLine("Press Enter to exist. ");
             Console.ReadLine();
-
-
-            //---------------------
-            //var i = 1;
-            //var titles = new List<string>();
-            //while (true)
-            //{
-            //	string url = "https://dotblogs.com.tw/kinanson/" + i;
-            //	var config = Configuration.Default.WithDefaultLoader();
-            //	var dom = BrowsingContext.New(config).OpenAsync(url).Result;
-            //	//下面是檢查分頁這個區塊
-            //	var page = dom.QuerySelector("body > div.top-wrapper > div > div > div.content-wrapper > div > ul");
-            //	if (page == null) break;
-            //	//下面需注意一下，因為我要爬的是全部，而不是用chrome工具找出的那一筆而已，所以我把選擇第一筆的部份刪掉
-            //	var title = dom.QuerySelectorAll("body > div.top-wrapper > div > div > div.content-wrapper > article > header > h3 > a").Select(x => x.TextContent);
-            //	titles.AddRange(title);
-            //	i++;
-            //}
-            //titles.Dump();
         }
 
-        private static string ProcessKeyword(string htmlContent)
+
+        private static string ProcessTextElement(string htmlContent, Dictionary<string, string> dicKeywordMap)
         {
             var parser = new HtmlParser();
             var document = parser.ParseDocument(htmlContent);
 
-            var page = document.QuerySelector("body");
+            string[] targetTags = { "p", "td", "th", "li", "span", "div", "strong", "em", "s" };
 
-            var result = page.InnerHtml.Replace("22", @"<a href=""name1"">22</a>");
+
+            foreach (var element in document.All)
+            {
+                var childs = element.ChildNodes;
+
+
+                if (targetTags.Contains(element.LocalName))
+                {
+                    ProcessChildNode(document, childs, dicKeywordMap);
+                }
+            }
+
+            var result = document.QuerySelector("body").InnerHtml;
             return result;
         }
 
 
-
-        private static string TryProcess(string htmlContent)
+        private static void ProcessChildNode(AngleSharp.Html.Dom.IHtmlDocument document, INodeList childs, Dictionary<string, string> dicKeywordMap)
         {
-            var parser = new HtmlParser();
-            var document = parser.ParseDocument(htmlContent);
-            
-
-            foreach (var element in document.All)
+            for (var i = 0; i < childs.Length; i++)
             {
-                Console.WriteLine(element.NodeName);
-
-                //if (element.LocalName == "img")
-                //{
-                //    var newElement = document.CreateElement("v-img");
-                //    newElement.SetAttribute("src", element.Attributes["src"] == null ? "" :
-                //     element.Attributes["src"].Value);
-                //    newElement.SetAttribute("alt", "Article Image");
-
-                //    element.Insert(AdjacentPosition.BeforeBegin, newElement.OuterHtml);
-                //    element.Remove();
-                //}
-            }
-            return document.FirstElementChild.OuterHtml;
-        }
-
-
-        private static void TryProces(IElement element)
-        {
-            if (string.Compare("a", element.LocalName, true) == 0)
-                return;
-
-            foreach (var item in element.Children)
-            {
+                var childNode = childs[i];
                 
+                // 只跑純文字
+                if (childNode.NodeType != NodeType.Text)
+                    continue;
+
+                // 如果沒有可閱讀文字，跳過
+                if (string.IsNullOrWhiteSpace(childNode.TextContent))
+                    continue;
+
+
+                // 切割文字
+                var splitedResult = WordSplitor.SplitWords(childNode.TextContent, dicKeywordMap);
+
+                // 如果沒有找到目標
+                if (!splitedResult.Where(obj => obj.NodeType == TextNodeType.Link).Any())
+                    continue;
+
+
+                List<INode> nodeList = new List<INode>();
+
+                foreach (var item in splitedResult)
+                {
+                    if (item is TextNode)
+                        nodeList.Add(document.CreateTextNode(item.Context));
+                    else
+                    {
+                        var linkItem = item as LinkNode;
+
+                        var link = document.CreateElement("a");
+                        link.SetAttribute("href", linkItem.LinkUrl.ToString());
+                        link.SetAttribute("data-autolink", "bot");
+                        link.TextContent = linkItem.Context;
+
+                        nodeList.Add(link);
+                    }
+                }
+
+                childNode.ReplaceWith(nodeList.ToArray());
             }
         }
-
 
 
 
@@ -177,19 +142,21 @@ namespace TryAngelSharp
                         //element.Remove();
                     }
 
+
                     //childNode.ReplaceWith(new AngleSharp.Html.Dom.HtmlElement(document, "#text"))
+                    childNode.ReplaceWith(document.CreateTextNode("kk123"));
                 }
 
-                if (element.LocalName == "img")
-                {
-                    var newElement = document.CreateElement("v-img");
-                    newElement.SetAttribute("src", element.Attributes["src"] == null ? "" :
-                     element.Attributes["src"].Value);
-                    newElement.SetAttribute("alt", "Article Image");
+                //if (element.LocalName == "img")
+                //{
+                //    var newElement = document.CreateElement("v-img");
+                //    newElement.SetAttribute("src", element.Attributes["src"] == null ? "" :
+                //     element.Attributes["src"].Value);
+                //    newElement.SetAttribute("alt", "Article Image");
 
-                    element.Insert(AdjacentPosition.BeforeBegin, newElement.OuterHtml);
-                    element.Remove();
-                }
+                //    element.Insert(AdjacentPosition.BeforeBegin, newElement.OuterHtml);
+                //    element.Remove();
+                //}
             }
             return document.FirstElementChild.OuterHtml;
         }

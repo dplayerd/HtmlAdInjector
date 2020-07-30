@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using WorkSplitor.Models;
 
 namespace WorkSplitor
 {
@@ -13,11 +14,11 @@ namespace WorkSplitor
         /// <param name="sourceText"> 原始文字 </param>
         /// <param name="keywordAndUrl"> 要切割的文字以及要取代的 Url </param>
         /// <returns></returns>
-        public static List<IWordElement> SplitWords(string sourceText, Dictionary<string, string> keywordAndUrl)
+        public static List<IWordNode> SplitWords(string sourceText, Dictionary<string, string> keywordAndUrl)
         {
             // 轉換原文字至資料模型
             var testText = new TextNode() { Context = sourceText };
-            List<IWordElement> list = new List<IWordElement>() { testText };
+            List<IWordNode> list = new List<IWordNode>() { testText };
 
             // 依每個關鍵字切割
             foreach (var item in keywordAndUrl)
@@ -34,7 +35,7 @@ namespace WorkSplitor
         /// <param name="list"> 要切割的原文 </param>
         /// <param name="keyword"> 目標關鍵字 </param>
         /// <param name="url"> 要更換的 url </param>
-        private static void ParseTextNodes(List<IWordElement> list, string keyword, Uri url)
+        private static void ParseTextNodes(List<IWordNode> list, string keyword, Uri url)
         {
             // 切割原文，關鍵字成為連結物件
             for (var i = 0; i < list.Count; i++)
@@ -53,10 +54,11 @@ namespace WorkSplitor
 
                 // 將文字依照關鍵字切成陣列，並且組成文字和連結清單
                 string[] arr = item.Context.Split(new string[] { keyword }, StringSplitOptions.None);
-                List<IWordElement> tempList = new List<IWordElement>();
+                List<IWordNode> tempList = new List<IWordNode>();
                 for (var j = 0; j < arr.Length; j++)
                 {
-                    tempList.Add(new TextNode() { Context = arr[j] });
+                    if (!string.IsNullOrWhiteSpace(arr[j]))
+                        tempList.Add(new TextNode() { Context = arr[j] });
 
                     if (j < (arr.Length - 1))
                         tempList.Add(new LinkNode() { Context = keyword, LinkUrl = url });
